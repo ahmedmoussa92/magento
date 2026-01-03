@@ -3,29 +3,34 @@ name: Magento Deploy to EC2
 on:
   push:
     branches:
-      - main   # Change to your deployment branch
+      - main  # change if your deployment branch is different
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout the repo
+    # 1. Checkout repository
     - name: Checkout Code
       uses: actions/checkout@v3
 
     # 2. Setup SSH for EC2
     - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.8.1
+      uses: webfactory/ssh-agent@v0.8
       with:
         ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-    # 3. Copy code to EC2
+    # 3. Setup Magento Composer Authentication
+    - name: Setup Magento Auth
+      run: |
+        composer config --global http-basic.repo.magento.com ${{ secrets.MAGENTO_PUBLIC_KEY }} ${{ secrets.MAGENTO_PRIVATE_KEY }}
+
+    # 4. Sync code to EC2
     - name: Sync Code to EC2
       run: |
         rsync -avz --delete ./ ubuntu@${{ secrets.EC2_HOST }}:/var/www/html/magento
 
-    # 4. Install dependencies on EC2
+    # 5. Run Magento setup commands on EC2
     - name: Run Magento Setup on EC2
       run: |
         ssh ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
