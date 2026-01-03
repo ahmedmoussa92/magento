@@ -27,7 +27,7 @@ jobs:
       - name: Install Composer Dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
 
-      # 4. Enable all Magento modules (skip DB)
+      # 4. Enable all Magento modules (skip DB in CI)
       - name: Enable Magento Modules without DB
         run: php bin/magento module:enable --all --clear-static-content || echo "Skipping module enable in CI"
 
@@ -42,28 +42,42 @@ jobs:
         run: vendor/bin/phpunit -c dev/tests/unit/phpunit.xml.dist || echo "Unit tests skipped/fail"
 
   deploy:
-    name: Deploy to AWS
+    name: Deploy to AWS EC2
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout latest code
       - name: Checkout
         uses: actions/checkout@v3
 
-      # SSH to AWS EC2 and run full Magento commands
+      # Deploy via SSH to EC2
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v0.1.6
         with:
-          host: ${{ secrets.AWS_HOST }}
-          username: ${{ secrets.AWS_USER }}
-          key: ${{ secrets.AWS_SSH_KEY }}
+          host: ${{ secrets.AWS_HOST }}          # EC2 Public IP or DNS
+          username: ${{ secrets.AWS_USER }}      # EC2 user (e.g., ubuntu)
+          key: ${{ secrets.AWS_SSH_KEY }}        # Private key secret (same as WordPress CI/CD)
           port: 22
           script: |
+            # Navigate to Magento folder
             cd /var/www/html/magento2
+
+            # Pull latest code
             git pull origin main
+
+            # Install dependencies
             composer install --no-dev --optimize-autoloader
+
+            # Enable all modules
             php bin/magento module:enable --all --clear-static-content
+
+            # Upgrade DB schema and data
             php bin/magento setup:upgrade
+
+            # Compile DI and deploy static content
             php bin/magento setup:di:compile
             php bin/magento setup:static-content:deploy -f
+
+            # Flush cache
             php bin/magento cache:flush
