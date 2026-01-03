@@ -2,24 +2,24 @@ name: Magento 2 CI/CD
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
+    branches: [ main ]
 
 jobs:
   magento2-build:
     runs-on: ubuntu-latest
-    name: "Magento 2 build & tests"
+    name: Magento 2 build & tests
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Magento CI build (existing project)
+      - name: Magento build (NO install, NO DB)
         uses: MAD-I-T/magento-actions@v3.29
         env:
           COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
         with:
           process: build
-          magento_only: true
           php: "8.2"
-          no_push: true
+          magento_only: 1
+          no_push: 1
+
