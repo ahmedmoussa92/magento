@@ -10,30 +10,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout code
+      # 1️⃣ Checkout repository code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Configure AWS credentials
+      # 2️⃣ Configure AWS credentials for this job
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: us-east-1   # Change if your ECR is in another region
 
-      # Login to ECR
+      # 3️⃣ Login to Amazon ECR (private or public)
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registries: ${{ secrets.ECR_REGISTRY }}
 
-      # Build Docker image
+      # 4️⃣ Build Magento Docker image
       - name: Build Magento Docker image
         run: docker build -t magento:latest ./dockerfiles
 
-      # Tag & push Docker image
-      - name: Push Docker image
+      # 5️⃣ Tag Docker image for ECR and push
+      - name: Tag & Push Docker image to ECR
         run: |
           docker tag magento:latest ${{ secrets.ECR_REGISTRY }}/magento:latest
           docker push ${{ secrets.ECR_REGISTRY }}/magento:latest
@@ -43,22 +43,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Configure AWS credentials
+      # 1️⃣ Configure AWS credentials for deploy job
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: us-east-1   # Same as ECR region
 
-      # Update EKS config
-      - name: Update Kubernetes config
+      # 2️⃣ Update Kubernetes config for EKS cluster
+      - name: Update EKS kubeconfig
         run: |
           aws eks update-kubeconfig --name prod-eks-cluster
 
-      # Deploy Magento container
+      # 3️⃣ Deploy Magento container
       - name: Deploy Magento container
         run: |
           kubectl set image deployment/magento magento=${{ secrets.ECR_REGISTRY }}/magento:latest
           kubectl rollout status deployment/magento
-
