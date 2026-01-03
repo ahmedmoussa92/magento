@@ -4,18 +4,19 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build_push:
-    name: Build & Push Docker Image
+    name: Build & Push Magento Docker Image
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code
+      # 1. Checkout repository
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Build Magento Docker image
+      # 2. Build Docker image
       - name: Build Magento Docker image
         run: docker build -t magento:latest ./dockerfiles
 
@@ -26,14 +27,17 @@ jobs:
           registry: ${{ secrets.ECR_REGISTRY }}
           region: us-east-1
 
-      # 4. Tag & push Docker image to ECR
-      - name: Push Docker image to ECR
+      # 4. Tag Docker image for ECR
+      - name: Tag Docker image
         run: |
           docker tag magento:latest ${{ secrets.ECR_REGISTRY }}/magento:latest
-          docker push ${{ secrets.ECR_REGISTRY }}/magento:latest
+
+      # 5. Push Docker image to ECR
+      - name: Push Docker image
+        run: docker push ${{ secrets.ECR_REGISTRY }}/magento:latest
 
   deploy:
-    name: Deploy to Kubernetes (EKS)
+    name: Deploy Magento to EKS
     needs: build_push
     runs-on: ubuntu-latest
 
@@ -46,13 +50,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # 2. Update EKS kubeconfig
-      - name: Update Kubernetes config
-        run: |
-          aws eks update-kubeconfig --name prod-eks-cluster --region us-east-1
+      # 2. Update kubeconfig for EKS
+      - name: Update EKS kubeconfig
+        run: aws eks update-kubeconfig --name prod-eks-cluster
 
-      # 3. Set Magento deployment image to the new ECR image
-      - name: Deploy Magento container
+      # 3. Deploy the new Magento container image
+      - name: Update Magento deployment
         run: |
           kubectl set image deployment/magento magento=${{ secrets.ECR_REGISTRY }}/magento:latest
           kubectl rollout status deployment/magento
