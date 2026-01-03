@@ -55,29 +55,23 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v0.1.6
         with:
-          host: ${{ secrets.AWS_HOST }}          # EC2 Public IP or DNS
-          username: ${{ secrets.AWS_USER }}      # EC2 user (e.g., ubuntu)
-          key: ${{ secrets.AWS_SSH_KEY }}        # Private key secret (same as WordPress CI/CD)
+          host: ${{ secrets.EC2_HOST }}       # Your EC2 Public IP or DNS
+          username: ubuntu                    # Your EC2 username
+          key: ${{ secrets.EC2_SSH_KEY }}     # Private key secret
           port: 22
           script: |
-            # Navigate to Magento folder
+            # Navigate to Magento directory
             cd /var/www/html/magento2
+
+            # Clean any untracked files (including Terraform caches)
+            git reset --hard origin/main
+            git clean -fd
 
             # Pull latest code
             git pull origin main
 
-            # Install dependencies
+            # Remove local caches if any (Terraform or var directories)
+            rm -rf .terraform var/cache var/page_cache var/view_preprocessed pub/static/frontend
+
+            # Install composer dependencies
             composer install --no-dev --optimize-autoloader
-
-            # Enable all modules
-            php bin/magento module:enable --all --clear-static-content
-
-            # Upgrade DB schema and data
-            php bin/magento setup:upgrade
-
-            # Compile DI and deploy static content
-            php bin/magento setup:di:compile
-            php bin/magento setup:static-content:deploy -f
-
-            # Flush cache
-            php bin/magento cache:flush
