@@ -2,41 +2,61 @@ name: Magento 2 CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  ci:
-    runs-on: ubuntu-latest
+  build:
     name: Magento 2 Build & Test
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          persist-credentials: false
-
-      - name: Magento CI Build
-        uses: MAD-I-T/magento-actions@v3.29
-        env:
-          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
-        with:
-          process: build
-          magento_only: 1
-          no_push: 1
-
-  cd:
     runs-on: ubuntu-latest
-    needs: ci
+
     steps:
-      - name: Deploy to AWS EC2
-        uses: appleboy/ssh-action@v1
+      # 1. Checkout code
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 2. Setup PHP
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          php-version: 8.1
+          extensions: mbstring, bcmath, intl, curl, xsl, gd, soap, zip, pdo_mysql
+
+      # 3. Install composer dependencies
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --no-progress
+
+      # 4. Magento commands (build only, no DB)
+      - name: Magento Build
+        run: |
+          php bin/magento setup:di:compile
+          php bin/magento setup:static-content:deploy -f
+
+      # 5. Optional: Run tests
+      - name: Run PHPUnit
+        run: |
+          vendor/bin/phpunit -c dev/tests/unit/phpunit.xml.dist
+
+  deploy:
+    name: Deploy to AWS
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # SSH to AWS EC2
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.AWS_HOST }}          # your EC2 IP or hostname
+          username: ${{ secrets.AWS_USER }}      # ec2-user, ubuntu, etc.
+          key: ${{ secrets.AWS_SSH_KEY }}        # private key from GitHub secrets
           script: |
             cd /var/www/html/magento2
             git pull origin main
             composer install --no-dev --optimize-autoloader
             php bin/magento setup:upgrade
             php bin/magento setup:di:compile
+            php bin/magento setup:static-content:deploy -f
             php bin/magento cache:flush
