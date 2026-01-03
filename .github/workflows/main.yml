@@ -10,13 +10,13 @@ jobs:
     name: Magento 2 build & tests
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
         with:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Magento CI build
+      - name: Magento build (NO install, NO DB)
         uses: MAD-I-T/magento-actions@v3.29
         env:
           COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
