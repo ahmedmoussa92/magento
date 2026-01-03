@@ -20,14 +20,15 @@ RUN apt-get update && apt-get install -y \
 # Enable Apache rewrite module
 RUN a2enmod rewrite
 
-# Install Composer from official Composer image
+# Install Composer from official image
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # Copy Magento project files
 COPY . /var/www/html
 
-# Set file permissions for Magento
-RUN chown -R www-data:www-data /var/www/html \
+# Create required Magento directories if missing, and set permissions
+RUN mkdir -p var generated pub/static pub/media app/etc \
+    && chown -R www-data:www-data /var/www/html \
     && find var generated pub/static pub/media app/etc -type f -exec chmod 644 {} \; \
     && find var generated pub/static pub/media app/etc -type d -exec chmod 755 {} \;
 
