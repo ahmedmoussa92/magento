@@ -51,27 +51,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      # Set up SSH key properly
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
       # Deploy via SSH to EC2
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v0.1.6
         with:
-          host: ${{ secrets.EC2_HOST }}       # Your EC2 Public IP or DNS
-          username: ubuntu                    # Your EC2 username
-          key: ${{ secrets.EC2_SSH_KEY }}     # Private key secret
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script: |
-            # Navigate to Magento directory
             cd /var/www/html/magento2
 
-            # Clean any untracked files (including Terraform caches)
+            # Clean any untracked files and reset code
             git reset --hard origin/main
             git clean -fd
 
             # Pull latest code
             git pull origin main
 
-            # Remove local caches if any (Terraform or var directories)
+            # Remove local caches
             rm -rf .terraform var/cache var/page_cache var/view_preprocessed pub/static/frontend
 
-            # Install composer dependencies
+            # Install dependencies
             composer install --no-dev --optimize-autoloader
+
+            # Enable all modules and update DB
+            php bin/magento module:enable --all --clear-static-content
+            php bin/magento setup:upgrade
+
+            # Compile DI and deploy static content
+            php bin/magento setup:di:compile
+            php bin/magento setup:static-content:deploy -f
+
+            # Flush cache
+            php bin/magento cache:flush
