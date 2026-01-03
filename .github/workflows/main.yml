@@ -1,21 +1,25 @@
+name: Magento 2 CI/CD
 
-name: m2-actions-test
-
-on: [push]
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
 
 jobs:
   magento2-build:
     runs-on: ubuntu-latest
-    name: 'm2 tests & build'      
-    steps:
-    - uses: actions/checkout@v3
-    - name: 'install fresh magento repo'
-      if: ${{true}}
-      uses: MAD-I-T/magento-actions@v3.29
-      env:
-        COMPOSER_AUTH: ${{secrets.COMPOSER_AUTH}}
-      with:
-        process: 'install-magento'
-        magento_version: 2.4.7
-        #no_push: 1 //uncomment this to prevent src code from being pushed to repo
+    name: "Magento 2 build & tests"
 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Magento CI build (existing project)
+        uses: MAD-I-T/magento-actions@v3.29
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+        with:
+          process: build
+          magento_only: true
+          php: "8.2"
+          no_push: true
