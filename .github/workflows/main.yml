@@ -14,9 +14,11 @@ jobs:
       ecr_registry: ${{ steps.login-ecr.outputs.registry }}
 
     steps:
+      # 1️⃣ Checkout the code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -24,18 +26,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      # 3️⃣ Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build Magento Docker image
+      # 4️⃣ Build Magento Docker image
+      - name: Build Docker image
         run: |
-          docker build -t magento:latest -f dockerfiles/magento/Dockerfile.magento ./dockerfiles/magento
+          docker build -t magento:latest -f dockerfiles/Dockerfile ./dockerfiles
 
+      # 5️⃣ Tag Docker image for ECR
       - name: Tag image for ECR
         run: |
           docker tag magento:latest ${{ steps.login-ecr.outputs.registry }}/magento:latest
 
+      # 6️⃣ Push Docker image to ECR
       - name: Push image to ECR
         run: |
           docker push ${{ steps.login-ecr.outputs.registry }}/magento:latest
@@ -45,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -52,15 +59,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      # 2️⃣ Update kubeconfig for EKS
       - name: Update kubeconfig for EKS
         run: |
           aws eks update-kubeconfig --name prod-eks-cluster --region us-east-1
 
+      # 3️⃣ Deploy latest Magento image
       - name: Deploy latest image
         run: |
           kubectl set image deployment/magento magento=${{ needs.build_push.outputs.ecr_registry }}/magento:latest
 
+      # 4️⃣ Wait for rollout to complete
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/magento
-
