@@ -7,36 +7,38 @@ on:
 
 jobs:
   build_push:
+    name: Build & Push Docker Image
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout code
+      # 1. Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Build Docker image
+      # 2. Build Magento Docker image
       - name: Build Magento Docker image
-        run: docker build -t magento:latest .
+        run: docker build -t magento:latest ./dockerfiles
 
-      # Login to ECR (or Docker Hub)
+      # 3. Login to AWS ECR
       - name: Login to AWS ECR
         uses: aws-actions/amazon-ecr-login@v2
         with:
           registry: ${{ secrets.ECR_REGISTRY }}
           region: us-east-1
 
-      # Tag & push Docker image
-      - name: Push Docker image
+      # 4. Tag & push Docker image to ECR
+      - name: Push Docker image to ECR
         run: |
           docker tag magento:latest ${{ secrets.ECR_REGISTRY }}/magento:latest
           docker push ${{ secrets.ECR_REGISTRY }}/magento:latest
 
   deploy:
+    name: Deploy to Kubernetes (EKS)
     needs: build_push
     runs-on: ubuntu-latest
 
     steps:
-      # Configure AWS credentials
+      # 1. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -44,13 +46,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Update EKS config
+      # 2. Update EKS kubeconfig
       - name: Update Kubernetes config
         run: |
-          aws eks update-kubeconfig --name prod-eks-cluster
+          aws eks update-kubeconfig --name prod-eks-cluster --region us-east-1
 
-      # Deploy Magento container
+      # 3. Set Magento deployment image to the new ECR image
       - name: Deploy Magento container
         run: |
-          kubectl set image deployment/magento magento=$ECR_REGISTRY/magento:latest
+          kubectl set image deployment/magento magento=${{ secrets.ECR_REGISTRY }}/magento:latest
           kubectl rollout status deployment/magento
