@@ -12,14 +12,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+          fetch-depth: 0
 
-      - name: Magento build (NO install, NO DB)
+      - name: Magento CI build
         uses: MAD-I-T/magento-actions@v3.29
         env:
           COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
         with:
           process: build
-          php: "8.2"
           magento_only: 1
           no_push: 1
-
