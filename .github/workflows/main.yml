@@ -5,18 +5,24 @@ on:
     branches: [ main ]
 
 jobs:
-  magento2-build:
+  magento2:
     runs-on: ubuntu-latest
-    name: Magento 2 build & tests
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: magento
+          MYSQL_USER: magento
+          MYSQL_PASSWORD: magento
+        ports:
+          - 3306:3306
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          persist-credentials: false
-          fetch-depth: 0
+      - uses: actions/checkout@v3
 
-      - name: Magento build (NO install, NO DB)
+      - name: Magento CI Build
         uses: MAD-I-T/magento-actions@v3.29
         env:
           COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
@@ -24,3 +30,23 @@ jobs:
           process: build
           magento_only: 1
           no_push: 1
+          db_host: 127.0.0.1
+          db_name: magento
+          db_user: magento
+          db_password: magento
+
+      - name: Deploy to AWS EC2
+        if: success()
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /var/www/html/magento2
+            git pull origin main
+            composer install --no-dev
+            php bin/magento setup:upgrade
+            php bin/magento setup:di:compile
+            php bin/magento cache:flush
+
