@@ -1,13 +1,9 @@
-name: Magento 2 CI/CD
+name: Magento CI/CD
 
 on:
   push:
     branches:
       - main
-    paths:
-      - "dockerfiles/**"
-      - "k8s/**"
-      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 jobs:
@@ -18,11 +14,9 @@ jobs:
       ecr_registry: ${{ steps.login-ecr.outputs.registry }}
 
     steps:
-      # 1️⃣ Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -30,34 +24,27 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # 3️⃣ Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4️⃣ Build Magento Docker image
       - name: Build Magento Docker image
         run: |
-          docker build -t magento:latest ./dockerfiles
+          docker build -t magento:latest -f dockerfiles/magento/Dockerfile.magento ./dockerfiles/magento
 
-      # 5️⃣ Tag image for ECR
-      - name: Tag Docker image
+      - name: Tag image for ECR
         run: |
-          docker tag magento:latest \
-          ${{ steps.login-ecr.outputs.registry }}/magento:latest
+          docker tag magento:latest ${{ steps.login-ecr.outputs.registry }}/magento:latest
 
-      # 6️⃣ Push image to ECR
-      - name: Push Docker image
+      - name: Push image to ECR
         run: |
-          docker push \
-          ${{ steps.login-ecr.outputs.registry }}/magento:latest
+          docker push ${{ steps.login-ecr.outputs.registry }}/magento:latest
 
   deploy:
     needs: build_push
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -65,15 +52,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # 2️⃣ Update kubeconfig for EKS cluster
-      - name: Update EKS kubeconfig
+      - name: Update kubeconfig for EKS
         run: |
-          aws eks update-kubeconfig \
-            --name prod-eks-cluster \
-            --region us-east-1
+          aws eks update-kubeconfig --name prod-eks-cluster --region us-east-1
 
-      # 3️⃣ Deploy Magento container to EKS
-      - name: Deploy Magento container
+      - name: Deploy latest image
         run: |
-          kubectl set image deployment/magento magento=${{ steps.login-ecr.outputs.registry }}/magento:latest
+          kubectl set image deployment/magento magento=${{ needs.build_push.outputs.ecr_registry }}/magento:latest
+
+      - name: Wait for rollout
+        run: |
           kubectl rollout status deployment/magento
+
