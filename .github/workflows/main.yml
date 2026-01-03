@@ -5,19 +5,15 @@ on:
     branches: [ main ]
 
 jobs:
-  magento2:
+  ci:
     runs-on: ubuntu-latest
-    name: Magento 2 build & deploy
+    name: Magento 2 Build & Test
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           persist-credentials: false
 
-      # =====================
-      # CI: Build & Validate
-      # =====================
       - name: Magento CI Build
         uses: MAD-I-T/magento-actions@v3.29
         env:
@@ -27,12 +23,12 @@ jobs:
           magento_only: 1
           no_push: 1
 
-      # =====================
-      # CD: Deploy to AWS EC2
-      # =====================
+  cd:
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
       - name: Deploy to AWS EC2
-        if: success()
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
