@@ -1,4 +1,4 @@
-name: Magento 2 CI/CD
+name: Magento 2 CI/CD Docker
 
 on:
   push:
@@ -6,90 +6,49 @@ on:
       - main
 
 jobs:
-  build:
-    name: Magento 2 Build & Test
+  build_push:
     runs-on: ubuntu-latest
 
     steps:
       # 1. Checkout code
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Setup PHP 8.2
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: 8.2
-          extensions: mbstring, bcmath, intl, curl, xsl, gd, soap, zip, pdo_mysql
-          coverage: none
-
-      # 3. Install composer dependencies
-      - name: Install Composer Dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
-
-      # 4. Enable all Magento modules (skip DB in CI)
-      - name: Enable Magento Modules without DB
-        run: php bin/magento module:enable --all --clear-static-content || echo "Skipping module enable in CI"
-
-      # 5. Magento build (DI compile & static content deploy only, skip DB)
-      - name: Magento Build
+      # 2. Build Magento Docker image
+      - name: Build Docker image
         run: |
-          php bin/magento setup:di:compile || echo "Skipping DI compile in CI"
-          php bin/magento setup:static-content:deploy -f || echo "Skipping static deploy in CI"
+          docker build -t magento:latest .
 
-      # 6. Optional PHPUnit tests
-      - name: Run PHPUnit
-        run: vendor/bin/phpunit -c dev/tests/unit/phpunit.xml.dist || echo "Unit tests skipped/fail"
+      # 3. Optionally tag and push to ECR (or Docker Hub)
+      - name: Tag Docker image for ECR
+        id: tag-image
+        run: |
+          docker tag magento:latest ${{ secrets.ECR_REGISTRY }}/magento:latest
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push ${{ secrets.ECR_REGISTRY }}/magento:latest
 
   deploy:
-    name: Deploy to AWS EC2
-    needs: build
+    needs: build_push
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout latest code
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      # Set up SSH key properly
-      - name: Setup SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
-      # Deploy via SSH to EC2
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v0.1.6
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: 22
-          script: |
-            cd /var/www/html/magento2
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-            # Clean any untracked files and reset code
-            git reset --hard origin/main
-            git clean -fd
+      - name: Update Kubernetes config
+        run: |
+          aws eks update-kubeconfig --name prod-eks-cluster
 
-            # Pull latest code
-            git pull origin main
-
-            # Remove local caches
-            rm -rf .terraform var/cache var/page_cache var/view_preprocessed pub/static/frontend
-
-            # Install dependencies
-            composer install --no-dev --optimize-autoloader
-
-            # Enable all modules and update DB
-            php bin/magento module:enable --all --clear-static-content
-            php bin/magento setup:upgrade
-
-            # Compile DI and deploy static content
-            php bin/magento setup:di:compile
-            php bin/magento setup:static-content:deploy -f
-
-            # Flush cache
-            php bin/magento cache:flush
+      - name: Deploy Magento container
+        run: |
+          kubectl set image deployment/magento magento=$ECR_REGISTRY/magento:latest
+          kubectl rollout status deployment/magento
