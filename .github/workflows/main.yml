@@ -65,17 +65,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # 2️⃣ Update kubeconfig for EKS
+      # 2️⃣ (Optional) Setup SSH key if EC2 deploy needed
+      - name: Setup EC2 SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.MAGENTO_EC2_KEY }}" > ~/.ssh/magento-project-key.pem
+          chmod 600 ~/.ssh/magento-project-key.pem
+
+      # 3️⃣ Update kubeconfig for EKS
       - name: Update kubeconfig for EKS
         run: |
           aws eks update-kubeconfig --name prod-eks-cluster --region us-east-1
 
-      # 3️⃣ Deploy latest Magento image
+      # 4️⃣ Deploy latest Magento image
       - name: Deploy latest image
         run: |
           kubectl set image deployment/magento magento=${{ needs.build_push.outputs.ecr_registry }}/magento:latest
 
-      # 4️⃣ Wait for rollout to complete
+      # 5️⃣ Wait for rollout to complete
       - name: Wait for rollout
         run: |
           kubectl rollout status deployment/magento
