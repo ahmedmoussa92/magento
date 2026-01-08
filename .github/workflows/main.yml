@@ -6,6 +6,11 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: magento
+  EKS_CLUSTER_NAME: prod-eks-cluster
+
 jobs:
   build_push:
     runs-on: ubuntu-latest
@@ -14,75 +19,68 @@ jobs:
       ecr_registry: ${{ steps.login-ecr.outputs.registry }}
 
     steps:
-      # 1️⃣ Checkout the code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      # 3️⃣ Ensure Magento ECR repo exists
       - name: Ensure ECR repository exists
         run: |
-          aws ecr describe-repositories --repository-names magento || \
-          aws ecr create-repository --repository-name magento
+          aws ecr describe-repositories \
+            --repository-names $ECR_REPOSITORY \
+            --region $AWS_REGION \
+          || aws ecr create-repository \
+            --repository-name $ECR_REPOSITORY \
+            --region $AWS_REGION
 
-      # 4️⃣ Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 5️⃣ Build Magento Docker image
       - name: Build Docker image
         run: |
-          docker build -t magento:latest -f dockerfiles/Dockerfile ./dockerfiles
+          docker build \
+            -t $ECR_REPOSITORY:latest \
+            -f dockerfiles/Dockerfile .
 
-      # 6️⃣ Tag Docker image for ECR
-      - name: Tag image for ECR
+      - name: Tag Docker image
         run: |
-          docker tag magento:latest ${{ steps.login-ecr.outputs.registry }}/magento:latest
+          docker tag $ECR_REPOSITORY:latest \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
 
-      # 7️⃣ Push Docker image to ECR
-      - name: Push image to ECR
+      - name: Push Docker image to ECR
         run: |
-          docker push ${{ steps.login-ecr.outputs.registry }}/magento:latest
+          docker push \
+          ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:latest
 
   deploy:
     needs: build_push
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      # 2️⃣ (Optional) Setup SSH key if EC2 deploy needed
-      - name: Setup EC2 SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.MAGENTO_EC2_KEY }}" > ~/.ssh/magento-project-key.pem
-          chmod 600 ~/.ssh/magento-project-key.pem
-
-      # 3️⃣ Update kubeconfig for EKS
       - name: Update kubeconfig for EKS
         run: |
-          aws eks update-kubeconfig --name prod-eks-cluster --region us-east-1
+          aws eks update-kubeconfig \
+            --name $EKS_CLUSTER_NAME \
+            --region $AWS_REGION
 
-      # 4️⃣ Deploy latest Magento image
-      - name: Deploy latest image
+      - name: Deploy Magento to EKS
         run: |
-          kubectl set image deployment/magento magento=${{ needs.build_push.outputs.ecr_registry }}/magento:latest
+          kubectl set image deployment/magento \
+          magento=${{ needs.build_push.outputs.ecr_registry }}/$ECR_REPOSITORY:latest
 
-      # 5️⃣ Wait for rollout to complete
-      - name: Wait for rollout
+      - name: Verify rollout
         run: |
           kubectl rollout status deployment/magento
